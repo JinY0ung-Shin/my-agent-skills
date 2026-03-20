@@ -1,0 +1,5 @@
+{
+  "name": "gemini-review",
+  "description": "Gemini CLI integration for iterative code review, plan review, and AI-assisted implementation. Supports tmux pane monitoring.",
+  "version": "1.0.0"
+}

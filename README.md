@@ -13,6 +13,7 @@ Claude Code plugin marketplace. A collection of agent skills for development wor
 | Plugin | Description |
 |--------|-------------|
 | `codex-review` | Codex CLI integration for iterative code review, plan review, and AI-assisted implementation. Supports tmux pane monitoring. |
+| `gemini-review` | Gemini CLI integration for iterative code review, plan review, and AI-assisted implementation. Supports tmux pane monitoring. |
 
 ### codex-review
 
@@ -56,3 +57,48 @@ Delegates implementation to Codex CLI with a structured 4-phase workflow:
 4. **Complete** — Presents results and lets you merge, keep, or discard
 
 Claude plans, Codex executes. The plan file is the contract between them.
+
+---
+
+### gemini-review
+
+```bash
+/plugin install gemini-review@my-agent-skills
+```
+
+Runs Gemini to review your code changes against 4 criteria:
+- Bugs / Logic Errors
+- Security
+- Performance
+- Code Quality
+
+Same iterative review-fix cycle as codex-review, powered by Gemini CLI (`gemini -p` headless mode).
+
+### gemini-plan-review
+
+```bash
+/gemini-plan-review [plan-file-path]
+```
+
+Runs Gemini to review an implementation plan or design document against 4 criteria:
+- Feasibility
+- Completeness
+- Risk & Impact
+- Clarity & Correctness
+
+Actively evaluates each finding (Accept/Partial/Disagree/Defer) instead of blindly accepting all suggestions. Iterates until the plan passes.
+
+### gemini-implement
+
+```bash
+/gemini-implement [task description]
+```
+
+Delegates implementation to Gemini CLI with a structured 4-phase workflow:
+
+1. **Plan** — Claude analyzes the codebase and creates a detailed implementation plan
+2. **Execute** — Gemini implements the plan on a safety branch
+3. **Verify** — Runs `/gemini-review` for quality review, iterates fixes until passing
+4. **Complete** — Presents results and lets you merge, keep, or discard
+
+Claude plans, Gemini executes. The plan file is the contract between them.
