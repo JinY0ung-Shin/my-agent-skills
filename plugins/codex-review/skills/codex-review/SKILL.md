@@ -9,6 +9,10 @@ user_invocable: true
 Run Codex to review code changes. If inside tmux, opens a separate pane for real-time monitoring.
 Iterate — fix issues and re-request review until score >= 8.0 with 0 critical issues.
 
+## Key Principle
+
+Codex runs in the **same working directory** as this project. There is no need to pass `git diff` output as an argument. Codex can run `git diff` itself and freely read any source files it needs. The prompt only needs to tell Codex which diff command to run.
+
 ## Steps
 
 1. **Detect review target.** Check for uncommitted changes:
@@ -18,7 +22,7 @@ git diff --quiet HEAD 2>/dev/null; echo $?
 ```
 
 - Exit code `1` → uncommitted changes exist → `DIFF_CMD="git diff HEAD"`
-- Exit code `0` → no uncommitted changes → `DIFF_CMD="git diff HEAD~1"` (직전 커밋 리뷰)
+- Exit code `0` → no uncommitted changes → `DIFF_CMD="git diff HEAD~1"` (review the last commit)
 
 2. **Prepare output file.**
 
@@ -93,30 +97,30 @@ Run this Bash call with `run_in_background: true` so Claude doesn't block indefi
 
 6. **Check pass criteria:**
    - SCORE >= 8.0 **AND** CRITICAL == 0 → **PASS** — report the final result.
-   - Otherwise → **proceed to step 7 (능동적 판단 및 대응).**
+   - Otherwise → **proceed to step 7 (active judgment and response).**
 
-7. **능동적 판단 — 각 피드백을 분류하고 대응 결정:**
+7. **Active judgment — classify and decide on each finding:**
 
-   리뷰 결과를 무조건 수용하지 않는다. 각 finding에 대해 다음 기준으로 **독립적으로 판단**한다:
+   Do not blindly accept all review findings. Evaluate each finding **independently** using the following criteria:
 
-   ### 판단 기준
-   | 분류 | 조건 | 대응 |
-   |------|------|------|
-   | **수용 (Accept)** | 지적이 명확히 타당하고 코드에 실제 문제가 있음 | 즉시 수정 |
-   | **부분 수용 (Partial)** | 지적의 방향은 맞지만 제안된 해결책이 부적절하거나 과도함 | 더 나은 방식으로 수정하고, 왜 다르게 수정했는지 반론 작성 |
-   | **반론 (Disagree)** | 지적이 오해에 기반하거나, 컨텍스트를 무시하거나, 의도된 설계를 모름 | 수정하지 않고 반론 근거를 작성 |
-   | **보류 (Defer)** | 타당하지만 현재 범위를 벗어나거나 대규모 구조 변경이 필요 | 사용자에게 확인 후 결정 |
+   ### Decision Criteria
+   | Classification | Condition | Action |
+   |----------------|-----------|--------|
+   | **Accept** | The finding is clearly valid and there is a real problem in the code | Fix immediately |
+   | **Partial** | The direction of the finding is correct but the suggested fix is inappropriate or excessive | Fix in a better way and write a rebuttal explaining why a different approach was taken |
+   | **Disagree** | The finding is based on a misunderstanding, ignores context, or is unaware of intentional design | Do not change the code; write a rebuttal with supporting rationale |
+   | **Defer** | Valid but out of scope or requires large-scale structural changes | Ask the user before deciding |
 
-   ### 판단 시 고려사항
-   - **코드의 의도와 컨텍스트를 우선 파악한다.** 리뷰어가 코드의 목적이나 제약조건을 이해하지 못했을 수 있다.
-   - **"더 좋은 방법이 있다"는 SUGGESTION은 현재 방식에 실제 문제가 없다면 반론할 수 있다.** 취향 차이는 수정 사유가 아니다.
-   - **CRITICAL로 분류되었더라도 실제로 critical이 아닐 수 있다.** 심각도를 독자적으로 재평가한다.
-   - **WARNING이라도 실제 버그 가능성이 높으면 CRITICAL로 격상하여 즉시 수정한다.**
-   - **성능 지적은 실측 데이터 없이 추측에 기반한 경우 반론 대상이다.**
+   ### Considerations
+   - **Understand the intent and context of the code first.** The reviewer may not understand the purpose or constraints of the code.
+   - **A SUGGESTION that "there's a better way" can be rebutted if the current approach has no actual problem.** Style preference is not a valid reason to change code.
+   - **A finding marked CRITICAL may not actually be critical.** Re-evaluate severity independently.
+   - **A WARNING with high actual bug probability should be escalated to CRITICAL and fixed immediately.**
+   - **Performance findings based on speculation without measured data are candidates for rebuttal.**
 
-8. **반론 메시지 작성 및 재리뷰 요청:**
+8. **Write rebuttal and request re-review:**
 
-   수정/반론 결과를 정리한 후, 재리뷰 요청 시 Codex에게 다음을 포함하여 전달한다:
+   After compiling fixes and rebuttals, send the following to Codex for re-review:
 
    ```bash
    cat > /tmp/codex-review-run.sh << 'SCRIPT'
@@ -159,21 +163,21 @@ Run this Bash call with `run_in_background: true` so Claude doesn't block indefi
    chmod +x /tmp/codex-review-run.sh
    ```
 
-   `REVIEW_RESPONSE`는 step 7에서 작성한 각 finding에 대한 대응 내역이다. 형식:
+   `REVIEW_RESPONSE` contains the response for each finding from step 7. Format:
 
    ```
-   ## Finding: [원본 finding 요약]
+   ## Finding: [original finding summary]
    - Decision: Accept / Partial / Disagree / Defer
-   - Action: [수정한 내용 또는 "No change"]
-   - Reasoning: [판단 근거 — 반론인 경우 구체적 근거 포함]
+   - Action: [what was fixed, or "No change"]
+   - Reasoning: [rationale — include specific supporting evidence for rebuttals]
    ```
 
-9. **재리뷰 결과 재판단 (반복):**
-   - 재리뷰 결과에서 다시 step 7의 판단 프로세스를 적용한다.
-   - 리뷰어가 반론을 수용했으면 해당 항목은 종결.
-   - 리뷰어가 새로운 근거와 함께 재지적하면, 그 근거를 검토하여 다시 수용/반론을 결정한다.
-   - **동일한 지적이 새로운 근거 없이 3회 반복되면, 해당 항목은 "의견 차이"로 기록하고 사용자에게 최종 판단을 요청한다.**
-   - 재리뷰 후에도 pass criteria 미충족 시 step 7부터 반복.
+9. **Re-evaluate re-review results (iterate):**
+   - Apply the same judgment process from step 7 to the re-review results.
+   - If the reviewer accepted a rebuttal, that item is closed.
+   - If the reviewer re-raised a finding with new evidence, review that evidence and decide to accept or rebut again.
+   - **If the same finding is repeated 3 times without new evidence, mark it as "difference of opinion" and ask the user for a final decision.**
+   - If pass criteria are still not met after re-review, repeat from step 7.
    - Repeat until pass criteria are met. No round limit.
 
 10. **Cleanup.** After the loop completes:
