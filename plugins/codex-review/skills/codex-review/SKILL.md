@@ -74,7 +74,12 @@ REVIEW_SIGNAL="codex-review-$$"
 # Append signal to the runner script
 echo 'sleep 10; tmux wait-for -S "'"${REVIEW_SIGNAL}"'"' >> /tmp/codex-review-run.sh
 
-tmux split-window -h -t 0 -c "$(pwd)" -d "bash /tmp/codex-review-run.sh '$(pwd)' '${REVIEW_OUT}'"
+PANE_COUNT=$(tmux list-panes | wc -l)
+if [ "$PANE_COUNT" -gt 1 ]; then
+  tmux split-window -v -c "$(pwd)" -d "bash /tmp/codex-review-run.sh '$(pwd)' '${REVIEW_OUT}'"
+else
+  tmux split-window -h -t 0 -c "$(pwd)" -d "bash /tmp/codex-review-run.sh '$(pwd)' '${REVIEW_OUT}'"
+fi
 tmux select-pane -t {last} -T "Codex Review"
 ```
 

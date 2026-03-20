@@ -153,7 +153,12 @@ IMPL_SIGNAL="codex-impl-$$"
 # Append signal to the runner script
 echo 'sleep 10; tmux wait-for -S "'"${IMPL_SIGNAL}"'"' >> /tmp/codex-impl-run.sh
 
-tmux split-window -h -t 0 -c "$(pwd)" -d "bash /tmp/codex-impl-run.sh '$(pwd)' '${IMPL_OUT}'"
+PANE_COUNT=$(tmux list-panes | wc -l)
+if [ "$PANE_COUNT" -gt 1 ]; then
+  tmux split-window -v -c "$(pwd)" -d "bash /tmp/codex-impl-run.sh '$(pwd)' '${IMPL_OUT}'"
+else
+  tmux split-window -h -t 0 -c "$(pwd)" -d "bash /tmp/codex-impl-run.sh '$(pwd)' '${IMPL_OUT}'"
+fi
 tmux select-pane -t {last} -T "Codex Implement"
 ```
 
