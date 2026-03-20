@@ -1,10 +1,10 @@
 {
-  "name": "jinyoung-agent-skills",
+  "name": "my-agent-skills",
   "owner": {
-    "name": "jinyoung"
+    "name": "my-agent-skills"
   },
   "metadata": {
-    "description": "Jinyoung's agent skills collection for Claude Code"
+    "description": "Agent skills collection for Claude Code"
   },
   "plugins": [
     {
