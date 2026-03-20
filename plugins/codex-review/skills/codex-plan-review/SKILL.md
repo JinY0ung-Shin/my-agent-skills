@@ -80,7 +80,8 @@ REVIEW_SIGNAL="codex-plan-review-$$"
 # Append signal to the runner script
 echo 'sleep 10; tmux wait-for -S "'"${REVIEW_SIGNAL}"'"' >> /tmp/codex-plan-review-run.sh
 
-tmux split-window -h -c "$(pwd)" -d "bash /tmp/codex-plan-review-run.sh '$(pwd)' '${REVIEW_OUT}'"
+tmux split-window -h -t 0 -c "$(pwd)" -d "bash /tmp/codex-plan-review-run.sh '$(pwd)' '${REVIEW_OUT}'"
+tmux select-pane -t {last} -T "Codex Plan Review"
 ```
 
 Then wait for completion:

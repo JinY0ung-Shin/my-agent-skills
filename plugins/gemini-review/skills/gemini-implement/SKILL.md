@@ -153,7 +153,8 @@ IMPL_SIGNAL="gemini-impl-$$"
 # Append signal to the runner script
 echo 'sleep 10; tmux wait-for -S "'"${IMPL_SIGNAL}"'"' >> /tmp/gemini-impl-run.sh
 
-tmux split-window -h -c "$(pwd)" -d "bash /tmp/gemini-impl-run.sh '$(pwd)' '${IMPL_OUT}'"
+tmux split-window -h -t 0 -c "$(pwd)" -d "bash /tmp/gemini-impl-run.sh '$(pwd)' '${IMPL_OUT}'"
+tmux select-pane -t {last} -T "Gemini Implement"
 ```
 
 Then wait for completion:
