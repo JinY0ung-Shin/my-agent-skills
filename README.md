@@ -12,7 +12,7 @@ Claude Code plugin marketplace. A collection of agent skills for development wor
 
 | Plugin | Description |
 |--------|-------------|
-| `codex-review` | Iterative code review with Codex CLI. Repeats review-fix cycle until score >= 8.0 with 0 critical issues. Supports tmux pane monitoring. |
+| `codex-review` | Codex CLI integration for iterative code review, plan review, and AI-assisted implementation. Supports tmux pane monitoring. |
 
 ### codex-review
 
@@ -41,3 +41,18 @@ Runs Codex to review an implementation plan or design document against 4 criteri
 - Clarity & Correctness
 
 Actively evaluates each finding (Accept/Partial/Disagree/Defer) instead of blindly accepting all suggestions. Iterates until the plan passes.
+
+### codex-implement
+
+```bash
+/codex-implement [task description]
+```
+
+Delegates implementation to Codex CLI with a structured 4-phase workflow:
+
+1. **Plan** — Claude analyzes the codebase and creates a detailed implementation plan
+2. **Execute** — Codex implements the plan on a safety branch
+3. **Verify** — Runs `/codex-review` for quality review, iterates fixes until passing
+4. **Complete** — Presents results and lets you merge, keep, or discard
+
+Claude plans, Codex executes. The plan file is the contract between them.

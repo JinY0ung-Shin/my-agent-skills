@@ -1,5 +1,5 @@
 {
   "name": "codex-review",
-  "description": "Iterative code review with Codex CLI until score >= 8.0 with 0 critical issues. Supports tmux pane monitoring.",
-  "version": "1.0.0"
+  "description": "Codex CLI integration for iterative code review, plan review, and AI-assisted implementation. Supports tmux pane monitoring.",
+  "version": "1.1.0"
 }
