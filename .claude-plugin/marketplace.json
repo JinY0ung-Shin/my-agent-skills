@@ -1,0 +1,19 @@
+{
+  "name": "jinyoung-agent-skills",
+  "owner": {
+    "name": "jinyoung"
+  },
+  "metadata": {
+    "description": "Jinyoung's agent skills collection for Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "codex-review",
+      "source": "./plugins/codex-review",
+      "description": "Iterative code review with Codex CLI until score >= 8.0 with 0 critical issues. Supports tmux pane monitoring.",
+      "version": "1.0.0",
+      "category": "development",
+      "tags": ["code-review", "codex", "quality"]
+    }
+  ]
+}
