@@ -155,11 +155,12 @@ echo 'sleep 10; tmux wait-for -S "'"${IMPL_SIGNAL}"'"' >> /tmp/gemini-impl-run.s
 
 PANE_COUNT=$(tmux list-panes | wc -l)
 if [ "$PANE_COUNT" -gt 1 ]; then
-  tmux split-window -v -c "$(pwd)" -d "bash /tmp/gemini-impl-run.sh '$(pwd)' '${IMPL_OUT}'"
+  LAST_PANE=$(tmux list-panes -F '#{pane_index}' | sort -n | tail -1)
+  NEW_PANE=$(tmux split-window -v -t "$LAST_PANE" -c "$(pwd)" -d -P -F '#{pane_id}' "bash /tmp/gemini-impl-run.sh '$(pwd)' '${IMPL_OUT}'")
 else
-  tmux split-window -h -t 0 -c "$(pwd)" -d "bash /tmp/gemini-impl-run.sh '$(pwd)' '${IMPL_OUT}'"
+  NEW_PANE=$(tmux split-window -h -t 0 -c "$(pwd)" -d -P -F '#{pane_id}' "bash /tmp/gemini-impl-run.sh '$(pwd)' '${IMPL_OUT}'")
 fi
-tmux select-pane -t {last} -T "Gemini Implement"
+tmux select-pane -t "$NEW_PANE" -T "Gemini Implement"
 ```
 
 Then wait for completion:

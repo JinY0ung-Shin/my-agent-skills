@@ -76,11 +76,12 @@ echo 'sleep 10; tmux wait-for -S "'"${REVIEW_SIGNAL}"'"' >> /tmp/codex-review-ru
 
 PANE_COUNT=$(tmux list-panes | wc -l)
 if [ "$PANE_COUNT" -gt 1 ]; then
-  tmux split-window -v -c "$(pwd)" -d "bash /tmp/codex-review-run.sh '$(pwd)' '${REVIEW_OUT}'"
+  LAST_PANE=$(tmux list-panes -F '#{pane_index}' | sort -n | tail -1)
+  NEW_PANE=$(tmux split-window -v -t "$LAST_PANE" -c "$(pwd)" -d -P -F '#{pane_id}' "bash /tmp/codex-review-run.sh '$(pwd)' '${REVIEW_OUT}'")
 else
-  tmux split-window -h -t 0 -c "$(pwd)" -d "bash /tmp/codex-review-run.sh '$(pwd)' '${REVIEW_OUT}'"
+  NEW_PANE=$(tmux split-window -h -t 0 -c "$(pwd)" -d -P -F '#{pane_id}' "bash /tmp/codex-review-run.sh '$(pwd)' '${REVIEW_OUT}'")
 fi
-tmux select-pane -t {last} -T "Codex Review"
+tmux select-pane -t "$NEW_PANE" -T "Codex Review"
 ```
 
 Then wait for completion:
