@@ -153,14 +153,18 @@ IMPL_SIGNAL="gemini-impl-$$"
 # Append signal to the runner script
 echo 'sleep 10; tmux wait-for -S "'"${IMPL_SIGNAL}"'"' >> /tmp/gemini-impl-run.sh
 
-PANE_COUNT=$(tmux list-panes | wc -l)
-if [ "$PANE_COUNT" -gt 1 ]; then
-  LAST_PANE=$(tmux list-panes -F '#{pane_index}' | sort -n | tail -1)
-  NEW_PANE=$(tmux split-window -v -t "$LAST_PANE" -c "$(pwd)" -d -P -F '#{pane_id}' "bash /tmp/gemini-impl-run.sh '$(pwd)' '${IMPL_OUT}'")
-else
-  NEW_PANE=$(tmux split-window -h -t 0 -c "$(pwd)" -d -P -F '#{pane_id}' "bash /tmp/gemini-impl-run.sh '$(pwd)' '${IMPL_OUT}'")
-fi
-tmux select-pane -t "$NEW_PANE" -T "Gemini Implement"
+# Serialize pane creation with flock to avoid race conditions
+(
+  flock -w 10 200
+  RIGHT_PANES=$(tmux list-panes -F '#{pane_id} #{pane_left}' | awk '$2 > 0 {print $1}')
+  if [ -n "$RIGHT_PANES" ]; then
+    LAST_RIGHT=$(echo "$RIGHT_PANES" | tail -1)
+    NEW_PANE=$(tmux split-window -v -t "$LAST_RIGHT" -c "$(pwd)" -d -P -F '#{pane_id}' "bash /tmp/gemini-impl-run.sh '$(pwd)' '${IMPL_OUT}'")
+  else
+    NEW_PANE=$(tmux split-window -h -t 0 -c "$(pwd)" -d -P -F '#{pane_id}' "bash /tmp/gemini-impl-run.sh '$(pwd)' '${IMPL_OUT}'")
+  fi
+  tmux select-pane -t "$NEW_PANE" -T "Gemini Implement"
+) 200>/tmp/tmux-pane-split.lock
 ```
 
 Then wait for completion:
