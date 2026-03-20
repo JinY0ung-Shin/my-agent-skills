@@ -27,3 +27,17 @@ Runs Codex to review your code changes against 4 criteria:
 - Code Quality
 
 Automatically fixes CRITICAL and WARNING issues, then re-reviews until the code passes.
+
+### codex-plan-review
+
+```bash
+/codex-plan-review [plan-file-path]
+```
+
+Runs Codex to review an implementation plan or design document against 4 criteria:
+- Feasibility
+- Completeness
+- Risk & Impact
+- Clarity & Correctness
+
+Actively evaluates each finding (Accept/Partial/Disagree/Defer) instead of blindly accepting all suggestions. Iterates until the plan passes.
