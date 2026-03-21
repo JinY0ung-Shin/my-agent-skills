@@ -102,9 +102,15 @@ IMPL_OUT=$(mktemp /tmp/gemini-impl-XXXXXX.txt)
 7. **Write runner script.**
 
 ```bash
-cat > /tmp/gemini-impl-run.sh << 'SCRIPT'
+IMPL_SCRIPT=$(mktemp /tmp/gemini-impl-XXXXXX.sh)
+cat > "${IMPL_SCRIPT}" << 'SCRIPT'
 #!/bin/bash
-cd "$1"
+SIGNAL_NAME="$3"
+if [ -n "$SIGNAL_NAME" ]; then
+  trap 'sleep 2; tmux wait-for -S "$SIGNAL_NAME" 2>/dev/null' EXIT
+fi
+echo "=== Gemini Implement started at $(date) ==="
+cd "$1" || { echo "ERROR: Failed to cd to $1"; exit 1; }
 GEMINI_SANDBOX=false gemini -p 'You are a senior software engineer executing an implementation plan.
 
 Read the plan at `'"${PLAN_FILE}"'` and implement it precisely.
@@ -133,8 +139,11 @@ VERIFICATION:
 - [results of verification commands, or "No verification commands specified"]
 
 STATUS: [COMPLETE|PARTIAL]' --yolo | tee "$2"
+GEMINI_EXIT=${PIPESTATUS[0]}
+echo ""
+echo "=== Done (exit: $GEMINI_EXIT) ==="
 SCRIPT
-chmod +x /tmp/gemini-impl-run.sh
+chmod +x "${IMPL_SCRIPT}"
 ```
 
    If the plan has multiple phases, repeat steps 7-8 for each phase. Update the Gemini prompt to specify which phase to execute: `'Execute Phase N of the plan at ...'`
@@ -148,22 +157,24 @@ echo $TMUX
 #### If inside tmux — run in a separate pane:
 
 ```bash
-IMPL_SIGNAL="gemini-impl-$$"
-
-# Append signal to the runner script
-echo 'sleep 10; tmux wait-for -S "'"${IMPL_SIGNAL}"'"' >> /tmp/gemini-impl-run.sh
+IMPL_SIGNAL="gemini-impl-$$-$RANDOM"
 
 # Serialize pane creation with flock to avoid race conditions
 (
   flock -w 10 200
+  # Clean up dead panes from previous runs
+  for DEAD_PANE in $(tmux list-panes -F '#{pane_id} #{pane_dead}' | awk '$2 == 1 {print $1}'); do
+    tmux kill-pane -t "$DEAD_PANE" 2>/dev/null
+  done
   RIGHT_PANES=$(tmux list-panes -F '#{pane_id} #{pane_left}' | awk '$2 > 0 {print $1}')
   if [ -n "$RIGHT_PANES" ]; then
     LAST_RIGHT=$(echo "$RIGHT_PANES" | tail -1)
-    NEW_PANE=$(tmux split-window -v -t "$LAST_RIGHT" -c "$(pwd)" -d -P -F '#{pane_id}' "bash /tmp/gemini-impl-run.sh '$(pwd)' '${IMPL_OUT}'")
+    NEW_PANE=$(tmux split-window -v -t "$LAST_RIGHT" -c "$(pwd)" -d -P -F '#{pane_id}' "bash ${IMPL_SCRIPT} '$(pwd)' '${IMPL_OUT}' '${IMPL_SIGNAL}'")
   else
-    NEW_PANE=$(tmux split-window -h -t 0 -c "$(pwd)" -d -P -F '#{pane_id}' "bash /tmp/gemini-impl-run.sh '$(pwd)' '${IMPL_OUT}'")
+    NEW_PANE=$(tmux split-window -h -t 0 -c "$(pwd)" -d -P -F '#{pane_id}' "bash ${IMPL_SCRIPT} '$(pwd)' '${IMPL_OUT}' '${IMPL_SIGNAL}'")
   fi
   tmux select-pane -t "$NEW_PANE" -T "Gemini Implement"
+  tmux set-option -p -t "$NEW_PANE" remain-on-exit on
 ) 200>/tmp/tmux-pane-split.lock
 ```
 
@@ -177,7 +188,7 @@ cat ${IMPL_OUT}
 #### If NOT inside tmux — run directly via Bash:
 
 ```bash
-bash /tmp/gemini-impl-run.sh "$(pwd)" "${IMPL_OUT}"
+bash "${IMPL_SCRIPT}" "$(pwd)" "${IMPL_OUT}"
 cat ${IMPL_OUT}
 ```
 
@@ -213,9 +224,15 @@ git status
    Compile the findings classified as Accept or Partial into fix instructions (`FIX_INSTRUCTIONS`), then run Gemini:
 
    ```bash
-   cat > /tmp/gemini-impl-run.sh << 'SCRIPT'
+   IMPL_SCRIPT=$(mktemp /tmp/gemini-impl-XXXXXX.sh)
+   cat > "${IMPL_SCRIPT}" << 'SCRIPT'
    #!/bin/bash
-   cd "$1"
+   SIGNAL_NAME="$3"
+   if [ -n "$SIGNAL_NAME" ]; then
+     trap 'sleep 2; tmux wait-for -S "$SIGNAL_NAME" 2>/dev/null' EXIT
+   fi
+   echo "=== Gemini Fix started at $(date) ==="
+   cd "$1" || { echo "ERROR: Failed to cd to $1"; exit 1; }
    GEMINI_SANDBOX=false gemini -p 'You are fixing code review issues in this repository.
 
    ## Issues to Fix
@@ -231,8 +248,11 @@ git status
    - [file]: [what was fixed]
 
    STATUS: [COMPLETE|PARTIAL]' --yolo | tee "$2"
+   GEMINI_EXIT=${PIPESTATUS[0]}
+   echo ""
+   echo "=== Done (exit: $GEMINI_EXIT) ==="
    SCRIPT
-   chmod +x /tmp/gemini-impl-run.sh
+   chmod +x "${IMPL_SCRIPT}"
    ```
 
    `FIX_INSTRUCTIONS` contains each accepted finding with specific fix guidance. Format:
@@ -264,5 +284,5 @@ git status
     - **Discard**: switch back to `${ORIGINAL_BRANCH}` and delete `${BRANCH_NAME}`
 
 16. **Cleanup.**
-    - Remove temp files: `rm -f ${IMPL_OUT} ${PLAN_FILE} /tmp/gemini-impl-run.sh`
+    - Remove temp files: `rm -f ${IMPL_OUT} ${PLAN_FILE} ${IMPL_SCRIPT}`
     - Execute the user's branch decision from step 15

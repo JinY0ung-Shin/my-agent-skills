@@ -33,9 +33,15 @@ REVIEW_OUT=$(mktemp /tmp/gemini-review-XXXXXX.txt)
 3. **Write runner script.**
 
 ```bash
-cat > /tmp/gemini-review-run.sh << 'SCRIPT'
+REVIEW_SCRIPT=$(mktemp /tmp/gemini-review-XXXXXX.sh)
+cat > "${REVIEW_SCRIPT}" << 'SCRIPT'
 #!/bin/bash
-cd "$1"
+SIGNAL_NAME="$3"
+if [ -n "$SIGNAL_NAME" ]; then
+  trap 'sleep 2; tmux wait-for -S "$SIGNAL_NAME" 2>/dev/null' EXIT
+fi
+echo "=== Gemini Review started at $(date) ==="
+cd "$1" || { echo "ERROR: Failed to cd to $1"; exit 1; }
 GEMINI_SANDBOX=false gemini -p 'You are a senior code reviewer. Run `'"${DIFF_CMD}"'` to see the current changes in this repository, then perform a thorough code review.
 
 Review criteria:
@@ -56,8 +62,11 @@ SCORE: X.X/10
 CRITICAL: N
 WARNING: N
 SUGGESTION: N' --yolo | tee "$2"
+GEMINI_EXIT=${PIPESTATUS[0]}
+echo ""
+echo "=== Done (exit: $GEMINI_EXIT) ==="
 SCRIPT
-chmod +x /tmp/gemini-review-run.sh
+chmod +x "${REVIEW_SCRIPT}"
 ```
 
 4. **Launch Gemini.** Check if running inside tmux and branch accordingly:
@@ -69,22 +78,24 @@ echo $TMUX
 ### If inside tmux — run in a separate pane:
 
 ```bash
-REVIEW_SIGNAL="gemini-review-$$"
-
-# Append signal to the runner script
-echo 'sleep 10; tmux wait-for -S "'"${REVIEW_SIGNAL}"'"' >> /tmp/gemini-review-run.sh
+REVIEW_SIGNAL="gemini-review-$$-$RANDOM"
 
 # Serialize pane creation with flock to avoid race conditions
 (
   flock -w 10 200
+  # Clean up dead panes from previous runs
+  for DEAD_PANE in $(tmux list-panes -F '#{pane_id} #{pane_dead}' | awk '$2 == 1 {print $1}'); do
+    tmux kill-pane -t "$DEAD_PANE" 2>/dev/null
+  done
   RIGHT_PANES=$(tmux list-panes -F '#{pane_id} #{pane_left}' | awk '$2 > 0 {print $1}')
   if [ -n "$RIGHT_PANES" ]; then
     LAST_RIGHT=$(echo "$RIGHT_PANES" | tail -1)
-    NEW_PANE=$(tmux split-window -v -t "$LAST_RIGHT" -c "$(pwd)" -d -P -F '#{pane_id}' "bash /tmp/gemini-review-run.sh '$(pwd)' '${REVIEW_OUT}'")
+    NEW_PANE=$(tmux split-window -v -t "$LAST_RIGHT" -c "$(pwd)" -d -P -F '#{pane_id}' "bash ${REVIEW_SCRIPT} '$(pwd)' '${REVIEW_OUT}' '${REVIEW_SIGNAL}'")
   else
-    NEW_PANE=$(tmux split-window -h -t 0 -c "$(pwd)" -d -P -F '#{pane_id}' "bash /tmp/gemini-review-run.sh '$(pwd)' '${REVIEW_OUT}'")
+    NEW_PANE=$(tmux split-window -h -t 0 -c "$(pwd)" -d -P -F '#{pane_id}' "bash ${REVIEW_SCRIPT} '$(pwd)' '${REVIEW_OUT}' '${REVIEW_SIGNAL}'")
   fi
   tmux select-pane -t "$NEW_PANE" -T "Gemini Review"
+  tmux set-option -p -t "$NEW_PANE" remain-on-exit on
 ) 200>/tmp/tmux-pane-split.lock
 ```
 
@@ -98,7 +109,7 @@ cat ${REVIEW_OUT}
 ### If NOT inside tmux — run directly via Bash:
 
 ```bash
-bash /tmp/gemini-review-run.sh "$(pwd)" "${REVIEW_OUT}"
+bash "${REVIEW_SCRIPT}" "$(pwd)" "${REVIEW_OUT}"
 cat ${REVIEW_OUT}
 ```
 
@@ -134,9 +145,15 @@ Run this Bash call with `run_in_background: true` so Claude doesn't block indefi
    After compiling fixes and rebuttals, send the following to Gemini for re-review:
 
    ```bash
-   cat > /tmp/gemini-review-run.sh << 'SCRIPT'
+   REVIEW_SCRIPT=$(mktemp /tmp/gemini-review-XXXXXX.sh)
+   cat > "${REVIEW_SCRIPT}" << 'SCRIPT'
    #!/bin/bash
-   cd "$1"
+   SIGNAL_NAME="$3"
+   if [ -n "$SIGNAL_NAME" ]; then
+     trap 'sleep 2; tmux wait-for -S "$SIGNAL_NAME" 2>/dev/null' EXIT
+   fi
+   echo "=== Gemini Re-Review started at $(date) ==="
+   cd "$1" || { echo "ERROR: Failed to cd to $1"; exit 1; }
    GEMINI_SANDBOX=false gemini -p 'You are a senior code reviewer conducting a RE-REVIEW. Run `'"${DIFF_CMD}"'` to see the current changes.
 
    ## Previous Review Context
@@ -170,8 +187,11 @@ Run this Bash call with `run_in_background: true` so Claude doesn't block indefi
    CRITICAL: N
    WARNING: N
    SUGGESTION: N' --yolo | tee "$2"
+   GEMINI_EXIT=${PIPESTATUS[0]}
+   echo ""
+   echo "=== Done (exit: $GEMINI_EXIT) ==="
    SCRIPT
-   chmod +x /tmp/gemini-review-run.sh
+   chmod +x "${REVIEW_SCRIPT}"
    ```
 
    `REVIEW_RESPONSE` contains the response for each finding from step 7. Format:
@@ -192,7 +212,7 @@ Run this Bash call with `run_in_background: true` so Claude doesn't block indefi
    - Repeat until pass criteria are met. No round limit.
 
 10. **Cleanup.** After the loop completes:
-   - Remove the temp output file: `rm -f ${REVIEW_OUT}`
+   - Remove temp files: `rm -f ${REVIEW_OUT} ${REVIEW_SCRIPT}`
 
 11. **Final report.** When the review passes, present:
    - Final score and issue counts

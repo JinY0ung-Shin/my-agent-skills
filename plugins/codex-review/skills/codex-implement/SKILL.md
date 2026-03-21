@@ -102,9 +102,15 @@ IMPL_OUT=$(mktemp /tmp/codex-impl-XXXXXX.txt)
 7. **Write runner script.**
 
 ```bash
-cat > /tmp/codex-impl-run.sh << 'SCRIPT'
+IMPL_SCRIPT=$(mktemp /tmp/codex-impl-XXXXXX.sh)
+cat > "${IMPL_SCRIPT}" << 'SCRIPT'
 #!/bin/bash
-cd "$1"
+SIGNAL_NAME="$3"
+if [ -n "$SIGNAL_NAME" ]; then
+  trap 'sleep 2; tmux wait-for -S "$SIGNAL_NAME" 2>/dev/null' EXIT
+fi
+echo "=== Codex Implement started at $(date) ==="
+cd "$1" || { echo "ERROR: Failed to cd to $1"; exit 1; }
 codex exec --dangerously-bypass-approvals-and-sandbox -o "$2" 'You are a senior software engineer executing an implementation plan.
 
 Read the plan at `'"${PLAN_FILE}"'` and implement it precisely.
@@ -133,8 +139,11 @@ VERIFICATION:
 - [results of verification commands, or "No verification commands specified"]
 
 STATUS: [COMPLETE|PARTIAL]'
+CMD_EXIT=$?
+echo ""
+echo "=== Done (exit: $CMD_EXIT) ==="
 SCRIPT
-chmod +x /tmp/codex-impl-run.sh
+chmod +x "${IMPL_SCRIPT}"
 ```
 
    If the plan has multiple phases, repeat steps 7-8 for each phase. Update the Codex prompt to specify which phase to execute: `'Execute Phase N of the plan at ...'`
@@ -148,22 +157,24 @@ echo $TMUX
 #### If inside tmux — run in a separate pane:
 
 ```bash
-IMPL_SIGNAL="codex-impl-$$"
-
-# Append signal to the runner script
-echo 'sleep 10; tmux wait-for -S "'"${IMPL_SIGNAL}"'"' >> /tmp/codex-impl-run.sh
+IMPL_SIGNAL="codex-impl-$$-$RANDOM"
 
 # Serialize pane creation with flock to avoid race conditions
 (
   flock -w 10 200
+  # Clean up dead panes from previous runs
+  for DEAD_PANE in $(tmux list-panes -F '#{pane_id} #{pane_dead}' | awk '$2 == 1 {print $1}'); do
+    tmux kill-pane -t "$DEAD_PANE" 2>/dev/null
+  done
   RIGHT_PANES=$(tmux list-panes -F '#{pane_id} #{pane_left}' | awk '$2 > 0 {print $1}')
   if [ -n "$RIGHT_PANES" ]; then
     LAST_RIGHT=$(echo "$RIGHT_PANES" | tail -1)
-    NEW_PANE=$(tmux split-window -v -t "$LAST_RIGHT" -c "$(pwd)" -d -P -F '#{pane_id}' "bash /tmp/codex-impl-run.sh '$(pwd)' '${IMPL_OUT}'")
+    NEW_PANE=$(tmux split-window -v -t "$LAST_RIGHT" -c "$(pwd)" -d -P -F '#{pane_id}' "bash ${IMPL_SCRIPT} '$(pwd)' '${IMPL_OUT}' '${IMPL_SIGNAL}'")
   else
-    NEW_PANE=$(tmux split-window -h -t 0 -c "$(pwd)" -d -P -F '#{pane_id}' "bash /tmp/codex-impl-run.sh '$(pwd)' '${IMPL_OUT}'")
+    NEW_PANE=$(tmux split-window -h -t 0 -c "$(pwd)" -d -P -F '#{pane_id}' "bash ${IMPL_SCRIPT} '$(pwd)' '${IMPL_OUT}' '${IMPL_SIGNAL}'")
   fi
   tmux select-pane -t "$NEW_PANE" -T "Codex Implement"
+  tmux set-option -p -t "$NEW_PANE" remain-on-exit on
 ) 200>/tmp/tmux-pane-split.lock
 ```
 
@@ -177,7 +188,7 @@ cat ${IMPL_OUT}
 #### If NOT inside tmux — run directly via Bash:
 
 ```bash
-bash /tmp/codex-impl-run.sh "$(pwd)" "${IMPL_OUT}"
+bash "${IMPL_SCRIPT}" "$(pwd)" "${IMPL_OUT}"
 cat ${IMPL_OUT}
 ```
 
@@ -213,9 +224,15 @@ git status
    Compile the findings classified as Accept or Partial into fix instructions (`FIX_INSTRUCTIONS`), then run Codex:
 
    ```bash
-   cat > /tmp/codex-impl-run.sh << 'SCRIPT'
+   IMPL_SCRIPT=$(mktemp /tmp/codex-impl-XXXXXX.sh)
+   cat > "${IMPL_SCRIPT}" << 'SCRIPT'
    #!/bin/bash
-   cd "$1"
+   SIGNAL_NAME="$3"
+   if [ -n "$SIGNAL_NAME" ]; then
+     trap 'sleep 2; tmux wait-for -S "$SIGNAL_NAME" 2>/dev/null' EXIT
+   fi
+   echo "=== Codex Fix started at $(date) ==="
+   cd "$1" || { echo "ERROR: Failed to cd to $1"; exit 1; }
    codex exec --dangerously-bypass-approvals-and-sandbox -o "$2" 'You are fixing code review issues in this repository.
 
    ## Issues to Fix
@@ -231,8 +248,11 @@ git status
    - [file]: [what was fixed]
 
    STATUS: [COMPLETE|PARTIAL]'
+   CMD_EXIT=$?
+   echo ""
+   echo "=== Done (exit: $CMD_EXIT) ==="
    SCRIPT
-   chmod +x /tmp/codex-impl-run.sh
+   chmod +x "${IMPL_SCRIPT}"
    ```
 
    `FIX_INSTRUCTIONS` contains each accepted finding with specific fix guidance. Format:
@@ -264,5 +284,5 @@ git status
     - **Discard**: switch back to `${ORIGINAL_BRANCH}` and delete `${BRANCH_NAME}`
 
 16. **Cleanup.**
-    - Remove temp files: `rm -f ${IMPL_OUT} ${PLAN_FILE} /tmp/codex-impl-run.sh`
+    - Remove temp files: `rm -f ${IMPL_OUT} ${PLAN_FILE} ${IMPL_SCRIPT}`
     - Execute the user's branch decision from step 15
