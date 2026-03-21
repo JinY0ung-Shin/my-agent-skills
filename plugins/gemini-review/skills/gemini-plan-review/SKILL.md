@@ -69,6 +69,7 @@ CRITICAL: N
 WARNING: N
 SUGGESTION: N' --yolo | tee "$2"
 GEMINI_EXIT=${PIPESTATUS[0]}
+gemini --list-sessions 2>&1 | grep -oP '\[\K[^\]]+' | head -1 > "${2}.session"
 echo ""
 echo "=== Done (exit: $GEMINI_EXIT) ==="
 SCRIPT
@@ -121,7 +122,11 @@ cat ${REVIEW_OUT}
 
 Run this Bash call with `run_in_background: true` so Claude doesn't block indefinitely.
 
-5. **Parse the review result.** Extract the SCORE, CRITICAL count, and each individual finding from the output file.
+5. **Parse the review result.** Extract the SCORE, CRITICAL count, and each individual finding from the output file. Also extract the session ID for subsequent review rounds:
+
+```bash
+SESSION_ID=$(cat "${REVIEW_OUT}.session")
+```
 
 6. **Check pass criteria:**
    - SCORE >= 8.0 **AND** CRITICAL == 0 → **PASS** — report the final result.
@@ -149,7 +154,7 @@ Run this Bash call with `run_in_background: true` so Claude doesn't block indefi
 
 8. **Revise the plan and request re-review:**
 
-   After compiling revisions and rebuttals, update the plan file with the accepted changes, then send the following to Gemini for re-review:
+   After compiling revisions and rebuttals, update the plan file with the accepted changes, then send the following to Gemini for re-review. Use session resume (`-r`) so Gemini retains full context of its previous findings:
 
    ```bash
    REVIEW_SCRIPT=$(mktemp /tmp/gemini-plan-review-XXXXXX.sh)
@@ -161,30 +166,17 @@ Run this Bash call with `run_in_background: true` so Claude doesn't block indefi
    fi
    echo "=== Gemini Plan Re-Review started at $(date) ==="
    cd "$1" || { echo "ERROR: Failed to cd to $1"; exit 1; }
-   GEMINI_SANDBOX=false gemini -p 'You are a senior software architect conducting a RE-REVIEW. Read the updated plan file at `'"${PLAN_FILE}"'` and review the changes.
-
-   ## Previous Review Context
-   The author has addressed your previous review. They made the following responses:
+   GEMINI_SANDBOX=false gemini -r "${SESSION_ID}" -p 'Author has responded to your review. Re-read the updated plan at `'"${PLAN_FILE}"'`.
 
    '"${REVIEW_RESPONSE}"'
 
-   ## Your Task
-   1. Verify that accepted revisions are correctly incorporated into the plan.
-   2. For items the author disagreed with, READ their reasoning carefully:
-      - If their argument is valid and well-supported, ACCEPT their position and remove the finding.
-      - If you still believe the issue is real, provide ADDITIONAL EVIDENCE or a CONCRETE SCENARIO of how the plan could fail. Do not simply repeat the same point.
-      - If you realize your original assessment was wrong, explicitly acknowledge it.
-   3. Check if the revisions introduced any NEW gaps or issues.
-   4. Do NOT re-raise findings that were already resolved or where you accepted the author rebuttal.
-
-   Review criteria:
-   1. Feasibility — Are the proposed steps technically feasible? Are there unrealistic assumptions, missing prerequisites, or incompatible dependencies?
-   2. Completeness — Are there missing steps, unaddressed edge cases, overlooked failure modes, or gaps in the rollback strategy?
-   3. Risk & Impact — Are risks properly identified and mitigated? Is the blast radius understood? Are there unintended side effects on existing functionality?
-   4. Clarity & Correctness — Is the plan unambiguous and actionable? Could an engineer follow it without guessing? Are the technical details accurate?
+   Re-evaluate:
+   1. Verify accepted revisions are correctly incorporated into the plan.
+   2. For rebuttals: accept if reasoning is valid, or provide NEW evidence. Do not repeat the same point.
+   3. Report NEW issues only if revisions introduced gaps.
+   4. Do NOT re-raise resolved items.
 
    Output format:
-   - Organize findings by criterion. Omit sections with no findings.
    - For each finding, note if it is NEW, UNRESOLVED (with new evidence), or REOPENED.
    - Mark severity: CRITICAL, WARNING, SUGGESTION
    - Include specific references to the plan sections.
@@ -219,7 +211,7 @@ Run this Bash call with `run_in_background: true` so Claude doesn't block indefi
    - Repeat until pass criteria are met. No round limit.
 
 10. **Cleanup.** After the loop completes:
-   - Remove temp files: `rm -f ${REVIEW_OUT} ${REVIEW_SCRIPT}`
+   - Remove temp files: `rm -f ${REVIEW_OUT} ${REVIEW_OUT}.session ${REVIEW_SCRIPT}`
 
 11. **Final report.** When the review passes, present:
    - Final score and issue counts
