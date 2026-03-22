@@ -174,7 +174,6 @@ IMPL_SIGNAL="gemini-impl-$$-$RANDOM"
     NEW_PANE=$(tmux split-window -h -t 0 -c "$(pwd)" -d -P -F '#{pane_id}' "bash ${IMPL_SCRIPT} '$(pwd)' '${IMPL_OUT}' '${IMPL_SIGNAL}'")
   fi
   tmux select-pane -t "$NEW_PANE" -T "Gemini Implement"
-  tmux set-option -p -t "$NEW_PANE" remain-on-exit on
 ) 200>/tmp/tmux-pane-split.lock
 ```
 

@@ -96,7 +96,6 @@ REVIEW_SIGNAL="codex-review-$$-$RANDOM"
     NEW_PANE=$(tmux split-window -h -t 0 -c "$(pwd)" -d -P -F '#{pane_id}' "bash ${REVIEW_SCRIPT} '$(pwd)' '${REVIEW_OUT}' '${REVIEW_SIGNAL}'")
   fi
   tmux select-pane -t "$NEW_PANE" -T "Codex Review"
-  tmux set-option -p -t "$NEW_PANE" remain-on-exit on
 ) 200>/tmp/tmux-pane-split.lock
 ```
 
